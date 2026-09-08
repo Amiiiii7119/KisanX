@@ -29,6 +29,7 @@ interface AuthUIProps {
     role: AuthRole,
   ) => Promise<void> | void;
   onGoogleSignIn?: () => Promise<void> | void;
+  onDemoSignIn?: (role: AuthRole) => Promise<void> | void;
 }
 
 const roles: {
@@ -57,7 +58,7 @@ const roles: {
   },
 ];
 
-export function AuthUI({ onSignIn, onSignUp, onGoogleSignIn }: AuthUIProps) {
+export function AuthUI({ onSignIn, onSignUp, onGoogleSignIn, onDemoSignIn }: AuthUIProps) {
   const [mode, setMode] = React.useState<AuthMode>("signin");
   const [fullName, setFullName] = React.useState("");
   const [email, setEmail] = React.useState("");
@@ -66,6 +67,7 @@ export function AuthUI({ onSignIn, onSignUp, onGoogleSignIn }: AuthUIProps) {
   const [showPassword, setShowPassword] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [googleLoading, setGoogleLoading] = React.useState(false);
+  const [demoLoadingRole, setDemoLoadingRole] = React.useState<AuthRole | null>(null);
   const [message, setMessage] = React.useState("");
   const [error, setError] = React.useState("");
 
@@ -114,6 +116,31 @@ export function AuthUI({ onSignIn, onSignUp, onGoogleSignIn }: AuthUIProps) {
     setMode(nextMode);
     setError("");
     setMessage("");
+  };
+
+  const handleDemoClick = async (targetRole: AuthRole) => {
+    setDemoLoadingRole(targetRole);
+    setError("");
+    setMessage("");
+
+    try {
+      if (onDemoSignIn) {
+        await onDemoSignIn(targetRole);
+      } else if (onSignIn) {
+        let demoMail = "farmer@kisanx.com";
+        if (targetRole === "BUYER") demoMail = "buyer@kisanx.com";
+        if (targetRole === "OFFICER") demoMail = "officer@kisanx.com";
+        await onSignIn(demoMail, "Password123!");
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Instant demo login failed. Please try manual email entry.",
+      );
+    } finally {
+      setDemoLoadingRole(null);
+    }
   };
 
   // Demo auto-fill helper
@@ -234,7 +261,7 @@ export function AuthUI({ onSignIn, onSignUp, onGoogleSignIn }: AuthUIProps) {
               </div>
 
               {/* Mode Switch Tabs */}
-              <div className="mb-6 grid grid-cols-2 rounded-2xl border border-white/10 bg-black/40 p-1">
+              <div className="mb-5 grid grid-cols-2 rounded-2xl border border-white/10 bg-black/40 p-1">
                 <button
                   type="button"
                   onClick={() => switchMode("signin")}
@@ -259,11 +286,79 @@ export function AuthUI({ onSignIn, onSignUp, onGoogleSignIn }: AuthUIProps) {
                 </button>
               </div>
 
+              {/* 1-CLICK INSTANT EVALUATION / DEMO PORTAL (Active in Sign In Mode) */}
+              {mode === "signin" && (
+                <div className="mb-5 rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-950/40 via-black/50 to-emerald-900/20 p-4 shadow-inner backdrop-blur-md">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-1.5">
+                      <Sparkles size={13} className="text-emerald-400 animate-pulse" />
+                      <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-400">
+                        1-Click Instant Evaluation
+                      </span>
+                    </div>
+                    <span className="rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 text-[9px] font-mono font-semibold text-emerald-300">
+                      Zero Friction
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-white/65 mb-3 leading-snug">
+                    Bypass OAuth & verification. Click any persona to enter their live authenticated portal:
+                  </p>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    {/* Farmer */}
+                    <button
+                      type="button"
+                      onClick={() => handleDemoClick("FARMER")}
+                      disabled={loading || googleLoading || !!demoLoadingRole}
+                      className="group flex flex-col items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] p-2.5 transition hover:border-emerald-500/50 hover:bg-emerald-500/15 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40"
+                    >
+                      <span className="text-xl transition group-hover:scale-110">🚜</span>
+                      <span className="mt-1 text-[11px] font-bold text-white group-hover:text-emerald-300">Farmer</span>
+                      <span className="text-[9px] text-emerald-400 font-mono">Rameshwar</span>
+                      {demoLoadingRole === "FARMER" && (
+                        <Loader2 size={12} className="mt-1.5 animate-spin text-emerald-400" />
+                      )}
+                    </button>
+
+                    {/* Buyer */}
+                    <button
+                      type="button"
+                      onClick={() => handleDemoClick("BUYER")}
+                      disabled={loading || googleLoading || !!demoLoadingRole}
+                      className="group flex flex-col items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] p-2.5 transition hover:border-teal-500/50 hover:bg-teal-500/15 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40"
+                    >
+                      <span className="text-xl transition group-hover:scale-110">🏭</span>
+                      <span className="mt-1 text-[11px] font-bold text-white group-hover:text-teal-300">Buyer</span>
+                      <span className="text-[9px] text-teal-400 font-mono">Agro Mills</span>
+                      {demoLoadingRole === "BUYER" && (
+                        <Loader2 size={12} className="mt-1.5 animate-spin text-teal-400" />
+                      )}
+                    </button>
+
+                    {/* Officer */}
+                    <button
+                      type="button"
+                      onClick={() => handleDemoClick("OFFICER")}
+                      disabled={loading || googleLoading || !!demoLoadingRole}
+                      className="group flex flex-col items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] p-2.5 transition hover:border-amber-500/50 hover:bg-amber-500/15 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40"
+                    >
+                      <span className="text-xl transition group-hover:scale-110">🛡️</span>
+                      <span className="mt-1 text-[11px] font-bold text-white group-hover:text-amber-300">Inspector</span>
+                      <span className="text-[9px] text-amber-400 font-mono">FSSAI Pass</span>
+                      {demoLoadingRole === "OFFICER" && (
+                        <Loader2 size={12} className="mt-1.5 animate-spin text-amber-400" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Google OAuth Button */}
               <button
                 type="button"
                 onClick={googleSignIn}
-                disabled={googleLoading || loading}
+                disabled={googleLoading || loading || !!demoLoadingRole}
                 className="flex h-11 w-full items-center justify-center gap-2.5 rounded-xl border border-white/15 bg-white/5 text-xs font-semibold text-white transition hover:bg-white/10 disabled:opacity-50 shadow-sm"
               >
                 {googleLoading ? (
@@ -291,11 +386,17 @@ export function AuthUI({ onSignIn, onSignUp, onGoogleSignIn }: AuthUIProps) {
                 Continue with Google
               </button>
 
+              <div className="mt-2 text-center">
+                <span className="text-[10px] text-white/40">
+                  ⚠️ If Google shows Error 401, use the 1-Click Evaluation buttons above.
+                </span>
+              </div>
+
               {/* Divider */}
               <div className="my-5 flex items-center gap-3">
                 <div className="h-px flex-1 bg-white/10" />
                 <span className="text-[10px] uppercase tracking-wider text-white/40 font-mono">
-                  or email credentials
+                  or enter credentials manually
                 </span>
                 <div className="h-px flex-1 bg-white/10" />
               </div>
@@ -322,9 +423,39 @@ export function AuthUI({ onSignIn, onSignUp, onGoogleSignIn }: AuthUIProps) {
                 )}
 
                 <div>
-                  <label className="block text-xs font-medium text-white/70 mb-1">
-                    Email Address
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-medium text-white/70">
+                      Email Address
+                    </label>
+                    {mode === "signin" && (
+                      <div className="flex items-center gap-1.5 text-[10px]">
+                        <span className="text-white/40">Fill:</span>
+                        <button
+                          type="button"
+                          onClick={() => fillDemo("farmer@kisanx.com", "Password123!")}
+                          className="font-semibold text-emerald-400 hover:underline"
+                        >
+                          Farmer
+                        </button>
+                        <span className="text-white/30">•</span>
+                        <button
+                          type="button"
+                          onClick={() => fillDemo("buyer@kisanx.com", "Password123!")}
+                          className="font-semibold text-teal-400 hover:underline"
+                        >
+                          Buyer
+                        </button>
+                        <span className="text-white/30">•</span>
+                        <button
+                          type="button"
+                          onClick={() => fillDemo("officer@kisanx.com", "Password123!")}
+                          className="font-semibold text-amber-400 hover:underline"
+                        >
+                          Inspector
+                        </button>
+                      </div>
+                    )}
+                  </div>
                   <div className="relative">
                     <Mail className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-white/40" />
                     <input
@@ -403,7 +534,17 @@ export function AuthUI({ onSignIn, onSignUp, onGoogleSignIn }: AuthUIProps) {
                 {/* Messages */}
                 {error && (
                   <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
-                    {error}
+                    <p className="leading-relaxed">{error}</p>
+                    <div className="mt-2.5 pt-2 border-t border-red-500/20 flex items-center justify-between">
+                      <span className="text-[10px] text-red-200/70">Want instant zero-friction demo?</span>
+                      <button
+                        type="button"
+                        onClick={() => handleDemoClick("FARMER")}
+                        className="rounded-lg bg-emerald-500/25 px-2.5 py-1 text-[10px] font-bold text-emerald-300 hover:bg-emerald-500/40 transition flex items-center gap-1"
+                      >
+                        🌾 Enter as Farmer
+                      </button>
+                    </div>
                   </div>
                 )}
 

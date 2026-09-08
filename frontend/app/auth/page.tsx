@@ -14,7 +14,11 @@ export default function AuthPage() {
     const cleanRole = (role || "FARMER").toUpperCase();
     if (cleanRole === "BUYER") {
       router.push("/market?tab=buyer");
-    } else if (cleanRole === "OFFICER") {
+    } else if (
+      cleanRole === "OFFICER" ||
+      cleanRole === "EXPERT" ||
+      cleanRole === "INSPECTOR"
+    ) {
       router.push("/market?tab=inspector");
     } else {
       router.push("/dashboard");
@@ -129,7 +133,25 @@ export default function AuthPage() {
     }
   };
 
+  const demoSignIn = async (targetRole: UserRole) => {
+    let email = "farmer@kisanx.com";
+    const password = "Password123!";
+
+    if (targetRole === "BUYER") {
+      email = "buyer@kisanx.com";
+    } else if (targetRole === "OFFICER") {
+      email = "officer@kisanx.com";
+    }
+
+    await signIn(email, password);
+  };
+
   return (
-    <AuthUI onSignIn={signIn} onSignUp={signUp} onGoogleSignIn={googleSignIn} />
+    <AuthUI
+      onSignIn={signIn}
+      onSignUp={signUp}
+      onGoogleSignIn={googleSignIn}
+      onDemoSignIn={demoSignIn}
+    />
   );
 }
