@@ -431,8 +431,45 @@ CREATE POLICY "Authenticated users can propose terms"
     ON public.trade_negotiations FOR INSERT
     WITH CHECK (true);
 
+-- PERFORMANCE INDEXES FOR TRADE & SELL SHOP
+CREATE INDEX IF NOT EXISTS idx_marketplace_farmer_id ON public.marketplace_listings(farmer_id);
+CREATE INDEX IF NOT EXISTS idx_marketplace_crop_status ON public.marketplace_listings(crop_name, inspector_status);
+CREATE INDEX IF NOT EXISTS idx_marketplace_created_at ON public.marketplace_listings(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_trade_neg_listing_id ON public.trade_negotiations(listing_id);
+CREATE INDEX IF NOT EXISTS idx_trade_neg_created_at ON public.trade_negotiations(created_at ASC);
+
 
 -- ====================================================================
--- 11. SUCCESS CONFIRMATION
+-- 11. CROP INTUITIONS TABLE (AI Proactive Health & Weather Pulses)
 -- ====================================================================
-SELECT 'KisanX database schema, RLS policies, and handle_new_user() trigger configured successfully!' AS status;
+CREATE TABLE IF NOT EXISTS public.crop_intuitions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    owner_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    crop_name TEXT NOT NULL,
+    health_score NUMERIC(5,2) NOT NULL,
+    health_status TEXT NOT NULL,
+    intuition_summary TEXT NOT NULL,
+    language TEXT DEFAULT 'en',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE public.crop_intuitions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view own crop intuitions" ON public.crop_intuitions;
+CREATE POLICY "Users can view own crop intuitions"
+    ON public.crop_intuitions FOR SELECT
+    USING (auth.uid() = owner_id OR owner_id IS NULL);
+
+DROP POLICY IF EXISTS "Allow insertion of crop intuitions" ON public.crop_intuitions;
+CREATE POLICY "Allow insertion of crop intuitions"
+    ON public.crop_intuitions FOR INSERT
+    WITH CHECK (true);
+
+CREATE INDEX IF NOT EXISTS idx_crop_intuitions_owner ON public.crop_intuitions(owner_id, created_at DESC);
+
+
+-- ====================================================================
+-- 12. SUCCESS CONFIRMATION
+-- ====================================================================
+SELECT 'KisanX database schema, RLS policies, Sell Shop negotiations, and crop_intuitions configured successfully!' AS status;
+

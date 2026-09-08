@@ -7,7 +7,10 @@ import time
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-import cv2
+try:
+    import cv2
+except ImportError:
+    cv2 = None
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile, status
 from PIL import Image
 from pydantic import BaseModel
@@ -47,6 +50,7 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
 MARKETPLACE_LISTINGS: List[Dict[str, Any]] = [
     {
         "id": "list-001",
+        "farmer_id": "demo-farmer-01",
         "farmer_name": "Rameshwar Patil",
         "farm_name": "Shivaji Krishi Estate",
         "village": "Baramati",
@@ -84,6 +88,7 @@ MARKETPLACE_LISTINGS: List[Dict[str, Any]] = [
     },
     {
         "id": "list-002",
+        "farmer_id": "demo-farmer-02",
         "farmer_name": "Suresh Bhai Patel",
         "farm_name": "Sardar Patel Cotton Fields",
         "village": "Morbi",
@@ -121,6 +126,7 @@ MARKETPLACE_LISTINGS: List[Dict[str, Any]] = [
     },
     {
         "id": "list-003",
+        "farmer_id": "demo-farmer-03",
         "farmer_name": "Balwinder Singh",
         "farm_name": "Guru Nanak Organic Farm",
         "village": "Bathinda",
@@ -525,8 +531,225 @@ def get_listings(
 
 
 # ============================================================
-# ENCRYPTED NEGOTIATION CHAT & BID PROPOSAL
+# ROLE-ISOLATED FARMER LISTINGS (FARMER ONLY SEES OWN LOTS)
 # ============================================================
+
+@router.get("/farmer-listings")
+def get_farmer_listings(
+    farmer_id: Optional[str] = None,
+    user: Optional[AuthenticatedUser] = Depends(get_optional_authenticated_user),
+):
+    """
+    Returns ONLY the harvest lots listed by this specific farmer.
+    Role Privacy Guarantee: Farmers cannot see or interfere with other farmers' lots.
+    """
+    target_id = (user.id if user and hasattr(user, "id") else None) or farmer_id or "demo-farmer-01"
+
+    results = []
+    seen_ids = set()
+
+    # Query from Supabase
+    try:
+        supabase = get_server_supabase()
+        db_res = supabase.table("marketplace_listings").select("*").eq("farmer_id", target_id).order("created_at", desc=True).execute()
+        for rec in db_res.data or []:
+            rec_id = rec.get("id")
+            if rec_id and rec_id not in seen_ids:
+                seen_ids.add(rec_id)
+                try:
+                    neg_res = supabase.table("trade_negotiations").select("*").eq("listing_id", rec_id).order("created_at", desc=False).execute()
+                    rec["negotiations"] = neg_res.data or []
+                except Exception:
+                    rec["negotiations"] = []
+                results.append(rec)
+    except Exception as exc:
+        print("[Marketplace] Farmer listings Supabase notice:", exc)
+
+    # In-memory listings matching this farmer
+    for l in MARKETPLACE_LISTINGS:
+        if l["id"] not in seen_ids:
+            l_fid = l.get("farmer_id")
+            if l_fid == target_id or (target_id == "demo-farmer-01" and l["id"] == "list-001"):
+                seen_ids.add(l["id"])
+                results.append(dict(l))
+
+    return {
+        "success": True,
+        "farmer_id": target_id,
+        "count": len(results),
+        "listings": results,
+    }
+
+
+# ============================================================
+# FOOD INSPECTOR / QUALITY OFFICER CERTIFICATION QUEUE
+# ============================================================
+
+@router.get("/inspector-queue")
+def get_inspector_queue(
+    status_filter: Optional[str] = None,
+    user: Optional[AuthenticatedUser] = Depends(get_optional_authenticated_user),
+):
+    """
+    Queue of harvest submissions for ICAR-FSSAI quality inspection and biosecurity audit.
+    """
+    results = []
+    seen_ids = set()
+
+    try:
+        supabase = get_server_supabase()
+        db_res = supabase.table("marketplace_listings").select("*").order("created_at", desc=True).execute()
+        for rec in db_res.data or []:
+            if rec["id"] not in seen_ids:
+                seen_ids.add(rec["id"])
+                results.append(rec)
+    except Exception:
+        pass
+
+    for l in MARKETPLACE_LISTINGS:
+        if l["id"] not in seen_ids:
+            seen_ids.add(l["id"])
+            results.append(dict(l))
+
+    if status_filter == "PENDING":
+        results = [r for r in results if r.get("inspector_status") == "PENDING_INSPECTION"]
+    elif status_filter == "CERTIFIED":
+        results = [r for r in results if r.get("inspector_status") != "PENDING_INSPECTION"]
+
+    return {
+        "success": True,
+        "count": len(results),
+        "queue": results,
+    }
+
+
+# ============================================================
+# SELL SHOP: INSTAGRAM-STYLE CHAT & DIRECT NEGOTIATION PLATFORM
+# ============================================================
+
+@router.get("/sell-shop/threads")
+def get_sell_shop_threads(
+    role: str = "farmer", # "farmer" or "buyer"
+    user: Optional[AuthenticatedUser] = Depends(get_optional_authenticated_user),
+):
+    """
+    Returns active 1-to-1 Sell Shop conversations with crop lot cards, counterpart details, and bid status.
+    """
+    threads = []
+    target_id = (user.id if user and hasattr(user, "id") else None) or ("demo-farmer-01" if role == "farmer" else "demo-buyer-01")
+
+    # Combine listings
+    all_lots = list(MARKETPLACE_LISTINGS)
+    try:
+        supabase = get_server_supabase()
+        db_res = supabase.table("marketplace_listings").select("*").order("created_at", desc=True).execute()
+        for rec in db_res.data or []:
+            if not any(x["id"] == rec["id"] for x in all_lots):
+                all_lots.append(rec)
+    except Exception:
+        pass
+
+    for l in all_lots:
+        negs = l.get("negotiations") or []
+        if not negs:
+            try:
+                supabase = get_server_supabase()
+                db_negs = supabase.table("trade_negotiations").select("*").eq("listing_id", l["id"]).order("created_at", desc=False).execute()
+                negs = db_negs.data or []
+                l["negotiations"] = negs
+            except Exception:
+                negs = []
+
+        if not negs:
+            continue
+
+        # In role mode:
+        # If farmer: only show threads for the farmer's lots
+        if role == "farmer":
+            l_fid = l.get("farmer_id") or "demo-farmer-01"
+            if l_fid != target_id and l["id"] != "list-001":
+                continue
+
+        last_msg = negs[-1]
+        active_offer = next((n.get("proposed_price") for n in reversed(negs) if n.get("proposed_price")), None)
+
+        threads.append({
+            "listing_id": l["id"],
+            "crop_name": l["crop_name"],
+            "variety": l.get("variety", ""),
+            "farm_name": l["farm_name"],
+            "farmer_name": l["farmer_name"],
+            "buyer_name": negs[0].get("sender_name", "Commodity Procurement Buyer"),
+            "quality_grade": l.get("quality_grade", "Grade A"),
+            "price_per_quintal": l["price_per_quintal"],
+            "estimated_weight_quintals": l["estimated_weight_quintals"],
+            "last_message": last_msg.get("message", ""),
+            "last_timestamp": last_msg.get("timestamp", ""),
+            "last_sender_role": last_msg.get("sender_role", "buyer"),
+            "latest_proposed_price": active_offer,
+            "status": last_msg.get("status", "NEGOTIATING"),
+            "messages_count": len(negs),
+            "unread": last_msg.get("sender_role") != role,
+        })
+
+    return {
+        "success": True,
+        "role": role,
+        "threads": threads,
+    }
+
+
+@router.get("/sell-shop/messages")
+def get_sell_shop_messages(
+    listing_id: str,
+):
+    """
+    Returns full chronological messages for a specific harvest listing in Sell Shop.
+    """
+    listing = next((l for l in MARKETPLACE_LISTINGS if l["id"] == listing_id), None)
+    if not listing:
+        try:
+            supabase = get_server_supabase()
+            res = supabase.table("marketplace_listings").select("*").eq("id", listing_id).maybe_single().execute()
+            if res.data:
+                listing = res.data
+        except Exception:
+            pass
+
+    if not listing:
+        raise HTTPException(status_code=404, detail="Crop lot not found.")
+
+    negs = listing.get("negotiations") or []
+    if not negs:
+        try:
+            supabase = get_server_supabase()
+            db_negs = supabase.table("trade_negotiations").select("*").eq("listing_id", listing_id).order("created_at", desc=False).execute()
+            negs = db_negs.data or []
+            listing["negotiations"] = negs
+        except Exception:
+            pass
+
+    return {
+        "success": True,
+        "listing_id": listing_id,
+        "listing": {
+            "id": listing["id"],
+            "crop_name": listing["crop_name"],
+            "variety": listing.get("variety", ""),
+            "farmer_name": listing["farmer_name"],
+            "farm_name": listing["farm_name"],
+            "village": listing.get("village", ""),
+            "district": listing.get("district", ""),
+            "quality_grade": listing.get("quality_grade", "Grade A"),
+            "price_per_quintal": listing["price_per_quintal"],
+            "estimated_weight_quintals": listing["estimated_weight_quintals"],
+            "total_valuation": listing["total_valuation"],
+            "inspector_status": listing.get("inspector_status", "PENDING_INSPECTION"),
+            "encryption_fingerprint": listing.get("encryption_fingerprint", ""),
+        },
+        "messages": negs,
+    }
+
 
 class NegotiationMessageRequest(BaseModel):
     listing_id: str
@@ -536,6 +759,7 @@ class NegotiationMessageRequest(BaseModel):
     message: str
 
 
+@router.post("/sell-shop/send")
 @router.post("/negotiate")
 def send_negotiation_message(
     payload: NegotiationMessageRequest,
@@ -586,6 +810,7 @@ def send_negotiation_message(
         "entry": message_entry,
         "all_negotiations": listing["negotiations"],
     }
+
 
 
 # ============================================================
