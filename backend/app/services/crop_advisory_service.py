@@ -4,10 +4,6 @@ from app.services.rag_service import rag_service
 from app.services.ollama_service import ollama_service
 
 
-# ============================================================
-# KISANX CROP ADVISORY SERVICE
-# ============================================================
-
 ADVISORY_SCHEMA = {
     "type": "object",
     "properties": {
@@ -39,10 +35,6 @@ ADVISORY_SCHEMA = {
     ],
 }
 
-
-# ============================================================
-# RETRIEVAL CONFIDENCE
-# ============================================================
 
 def calculate_retrieval_confidence(
     documents: list,
@@ -88,10 +80,6 @@ def calculate_retrieval_confidence(
     return "low"
 
 
-# ============================================================
-# SOURCE VALIDATION
-# ============================================================
-
 def validate_sources(
     sources: Any,
     document_count: int,
@@ -127,10 +115,6 @@ def validate_sources(
     )
 
 
-# ============================================================
-# ANSWER CLEANUP
-# ============================================================
-
 def clean_answer(
     answer: Any,
 ) -> str:
@@ -147,7 +131,6 @@ def clean_answer(
 
     import re
 
-    # Remove accidental source leakage.
     answer = re.sub(
         r"\s*source[s]?\s*:\s*"
         r"\[[^\]]*\]",
@@ -156,14 +139,12 @@ def clean_answer(
         flags=re.IGNORECASE,
     )
 
-    # Remove trailing [1] or [1, 2].
     answer = re.sub(
         r"\s*\[[0-9]+(?:\s*,\s*[0-9]+)*\]\s*$",
         "",
         answer,
     )
 
-    # KisanX terminology protection.
     answer = answer.replace(
         "roughening",
         "rouging",
@@ -176,10 +157,6 @@ def clean_answer(
 
     return answer.strip()
 
-
-# ============================================================
-# SYSTEM PROMPT
-# ============================================================
 
 SYSTEM_PROMPT = """
 You are KisanX Crop Doctor.
@@ -362,21 +339,13 @@ No text outside JSON.
 """
 
 
-# ============================================================
-# GENERATE INITIAL CROP ADVISORY
-# ============================================================
-
 async def generate_crop_advisory(
     disease: str,
     classifier_confidence: float,
-    crop: str = "Sugarcane",
+    crop: str,
     language: str = "en",
     farm_context: Optional[str] = None,
 ) -> Dict[str, Any]:
-
-    # --------------------------------------------------------
-    # BUILD RETRIEVAL QUERY
-    # --------------------------------------------------------
 
     query_parts = [
         f"Crop: {crop}",
@@ -396,20 +365,12 @@ async def generate_crop_advisory(
         query_parts
     )
 
-    # --------------------------------------------------------
-    # RETRIEVE TRUSTED EVIDENCE
-    # --------------------------------------------------------
-
     documents = rag_service.retrieve(
         query=retrieval_query,
         match_count=5,
         crop=crop,
         disease=disease,
     )
-
-    # --------------------------------------------------------
-    # NO EVIDENCE
-    # --------------------------------------------------------
 
     if not documents:
 
@@ -431,10 +392,6 @@ async def generate_crop_advisory(
             "retrieved_documents": 0,
             "evidence": [],
         }
-
-    # --------------------------------------------------------
-    # BUILD EVIDENCE
-    # --------------------------------------------------------
 
     evidence_blocks = []
 
@@ -462,10 +419,6 @@ async def generate_crop_advisory(
     evidence = "\n\n".join(
         evidence_blocks
     )
-
-    # --------------------------------------------------------
-    # USER PROMPT
-    # --------------------------------------------------------
 
     user_prompt = f"""
 CROP
@@ -522,19 +475,11 @@ The AI scan is a prediction, not absolute proof.
 Return valid JSON only.
 """
 
-    # --------------------------------------------------------
-    # GEMMA
-    # --------------------------------------------------------
-
     result = await ollama_service.generate_json(
         system_prompt=SYSTEM_PROMPT,
         user_prompt=user_prompt,
         schema=ADVISORY_SCHEMA,
     )
-
-    # --------------------------------------------------------
-    # MODEL FAILURE
-    # --------------------------------------------------------
 
     if "error" in result:
 
@@ -557,10 +502,6 @@ Return valid JSON only.
             "evidence": documents,
             "error": result,
         }
-
-    # --------------------------------------------------------
-    # VALIDATE OUTPUT
-    # --------------------------------------------------------
 
     sources = validate_sources(
         result.get(

@@ -3,28 +3,20 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 
-from app.routes.assistant import (
-    router as assistant_router,
-)
-from app.routes.farms import (
-    router as farms_router,
-)
-from app.routes.scans import (
-    router as scans_router,
-)
-from app.routes.rag import (
-    router as rag_router,
-)
+from app.routes.assistant import router as assistant_router
+from app.routes.farms import router as farms_router
+from app.routes.scans import router as scans_router
+from app.routes.rag import router as rag_router
 from app.routes.farm_intelligence import (
     router as farm_intelligence_router,
 )
-from app.routes.weather import (
-    router as weather_router,
-)
+from app.routes.weather import router as weather_router
+from app.routes.marketplace import router as marketplace_router
+from app.routes.auth_sync import router as auth_sync_router
 
 
 # ============================================================
-# FASTAPI APPLICATION
+# KISANX FASTAPI APPLICATION
 # ============================================================
 
 app = FastAPI(
@@ -54,7 +46,7 @@ app.add_middleware(
 
 
 # ============================================================
-# ROUTES
+# ROUTERS
 # ============================================================
 
 app.include_router(
@@ -81,6 +73,14 @@ app.include_router(
     weather_router
 )
 
+app.include_router(
+    marketplace_router
+)
+
+app.include_router(
+    auth_sync_router
+)
+
 
 # ============================================================
 # ROOT
@@ -88,7 +88,6 @@ app.include_router(
 
 @app.get("/")
 def root():
-
     return {
         "status": "ok",
         "service": "kisanx-api",
@@ -102,7 +101,6 @@ def root():
 
 @app.get("/health")
 def health_check():
-
     return {
         "status": "ok",
         "service": "kisanx-api",
